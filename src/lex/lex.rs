@@ -1,5 +1,7 @@
 use crate::lex::cursor::Cursor;
 use crate::lex::token::Token;
+use crate::parse::ast::Type;
+
 #[derive(Debug, PartialEq)]
 pub enum LexerError {
     InvalidNumberLiteral,
@@ -103,9 +105,9 @@ fn parse_identifier(cursor: &mut Cursor) -> Result<Token, LexerError> {
     match identifier.as_str() {
         "do" => Ok(Token::Do),
         "end" => Ok(Token::End),
-        "int" => Ok(Token::Int),
-        "str" => Ok(Token::Str),
-        "bool" => Ok(Token::Bool),
+        "int" => Ok(Token::Type(Type::Int)),
+        "str" => Ok(Token::Type(Type::Str)),
+        "bool" => Ok(Token::Type(Type::Bool)),
         "match" => Ok(Token::Match),
         "del" => Ok(Token::Del),
 
@@ -150,14 +152,30 @@ fn parse_string(cursor: &mut Cursor) -> Option<Result<Token, LexerError>> {
                 }
             }
         }
-        '>' => Ok(Token::GreaterThan),
-        '<' => Ok(Token::LessThan),
+        '>' => {
+            cursor.next();
+            match cursor.peek_increment()? {
+                '=' => Ok(Token::GreaterThanOrEqual),
+                _ => {
+                    cursor.back();
+                    Ok(Token::GreaterThan)
+                }
+            }
+        }
+        '<' => {
+            cursor.next();
+            match cursor.peek_increment()? {
+                '=' => Ok(Token::LessThanOrEqual),
+                _ => {
+                    cursor.back();
+                    Ok(Token::LessThan)
+                }
+            }
+        }
         '=' => {
             cursor.next();
             match cursor.peek_increment()? {
                 '=' => Ok(Token::Equal),
-                '>' => Ok(Token::GreaterThanOrEqual),
-                '<' => Ok(Token::LessThanOrEqual),
                 _ => {
                     cursor.back();
                     Ok(Token::Assign)

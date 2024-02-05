@@ -1,4 +1,4 @@
 mod cursor;
-mod lex;
+pub mod lex;
 mod tests;
-mod token;
+pub mod token;

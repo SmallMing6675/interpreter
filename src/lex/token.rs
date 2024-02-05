@@ -1,4 +1,6 @@
-#[derive(Debug, PartialEq)]
+use crate::parse::ast::Type;
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     // Variable assignment
     Mod,
@@ -17,6 +19,19 @@ pub enum Token {
     Minus,
     Multiply,
     Divide,
+    Modulo,
+
+    And,
+    Or,
+    Not,
+    Xor,
+
+    Pipe,
+    Delete,
+
+    FatArrow,
+    Underscore,
+
     FloorDiv,
     // Keywords
     If,
@@ -26,10 +41,7 @@ pub enum Token {
     Fn,
     Do,
     // Types
-    Int,
-    Float,
-    Str,
-    Bool,
+    Type(Type),
     Match,
 
     // Functions
@@ -43,10 +55,6 @@ pub enum Token {
 
     True,
     False,
-
-    And,
-    Pipe,
-    Not,
 
     LeftSquareBracket,
     RightSquareBracket,
