@@ -115,6 +115,7 @@ fn parse_identifier(cursor: &mut Cursor) -> Result<Token, LexerError> {
         "then" => Ok(Token::Then),
         "else" => Ok(Token::Else),
         "fn" => Ok(Token::Fn),
+        "_" => Ok(Token::Underscore),
 
         "True" | "true" => Ok(Token::True),
         "False" | "false" => Ok(Token::False),
@@ -176,6 +177,7 @@ fn parse_string(cursor: &mut Cursor) -> Option<Result<Token, LexerError>> {
             cursor.next();
             match cursor.peek_increment()? {
                 '=' => Ok(Token::Equal),
+                '>' => Ok(Token::FatArrow),
                 _ => {
                     cursor.back();
                     Ok(Token::Assign)

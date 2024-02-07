@@ -11,6 +11,8 @@ pub enum ParseError {
     InvalidToken,
     InvalidAssign(Token),
     UnexpectedEOF,
+    EOF,
+    ExpectedIdentifier,
 }
 /// Parses a type of a variable.
 /// @param &mut cursor: the cursor to look for.
@@ -250,24 +252,23 @@ fn parse_match_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
 
         Ok(ASTMatchArm::MatchCondition(pattern, result))
     }
+
     fn parse_pattern(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
         parse_expression(cursor)
     }
 
-    cursor.expect_token(Token::Match)?; // Expect the "match" keyword
-
+    cursor.expect_token(Token::Match)?;
     let expression_to_match = parse_expression(cursor)?;
 
     let mut match_cases = Vec::new();
 
-    while cursor.peek_increment().ok_or(ParseError::UnexpectedEOF)? == Token::Pipe {
-        match_cases.push(parse_match_case(cursor)?);
-
-        println!("{:?}", cursor);
+    while cursor.peek_increment() == Some(Token::Pipe) {
+        match cursor.peek_next() {
+            Some(Token::Pipe) => break,
+            Some(_) => match_cases.push(parse_match_case(cursor)?),
+            None => return Err(ParseError::UnexpectedEOF),
+        }
     }
-
-    cursor.back();
-    cursor.back();
 
     Ok(ASTNode::Match(Box::new(expression_to_match), match_cases))
 }
@@ -277,6 +278,81 @@ fn parse_variable_delete(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
     let variable_name = cursor.expect_variable()?;
     Ok(ASTNode::VariableDeletion(variable_name))
 }
+
+fn parse_if_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
+    cursor.expect_token(Token::If)?;
+    let condition = parse_expression(cursor)?;
+    cursor.expect_token(Token::Then)?;
+
+    let then_block = parse_tokens(cursor).ok_or(ParseError::UnexpectedEOF)??;
+    cursor.expect_token(Token::Else)?;
+    let else_block = parse_tokens(cursor).ok_or(ParseError::UnexpectedEOF)??;
+    cursor.expect_token(Token::End)?;
+
+    Ok(ASTNode::If(
+        Box::new(condition),
+        Box::new(then_block),
+        Some(Box::new(else_block)),
+    ))
+}
+
+fn parse_function_call(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
+    fn parse_argument_list(cursor: &mut Cursor) -> Result<Vec<ASTNode>, ParseError> {
+        let mut arguments = Vec::new();
+
+        match cursor.next() {
+            Some(Token::LeftParenthesis) => (),
+            _ => return Ok(arguments),
+        }
+        loop {
+            match cursor.peek() {
+                Some(Token::RightParenthesis) => break,
+                Some(_) => {
+                    let argument = parse_expression(cursor)?;
+                    arguments.push(argument);
+                }
+                None => return Err(ParseError::UnexpectedEOF),
+            }
+
+            match cursor.peek() {
+                Some(Token::Comma) => {
+                    cursor.next();
+                }
+                Some(Token::RightParenthesis) => (),
+                _ => return Err(ParseError::InvalidToken),
+            }
+        }
+        match cursor.next() {
+            Some(Token::RightParenthesis) => (),
+            _ => return Err(ParseError::InvalidToken),
+        }
+
+        Ok(arguments)
+    }
+
+    let function_name = match cursor.next() {
+        Some(Token::Identifier(name)) => name,
+        _ => return Err(ParseError::InvalidToken),
+    }
+    .clone();
+
+    let arguments = parse_argument_list(cursor)?;
+    fn build_function_call_chain(function_name: &str, arguments: Vec<ASTNode>) -> ASTNode {
+        match arguments.len() {
+            0 => ASTNode::VariableUsage(function_name.to_string(), None),
+            _ => ASTNode::FunctionCall(
+                function_name.to_string(),
+                Box::new(build_function_call_chain(
+                    function_name,
+                    arguments[1..].to_vec(),
+                )),
+            ),
+        }
+    }
+
+    return Ok(build_function_call_chain(&function_name.clone(), arguments));
+}
+
 fn parse_tokens(cursor: &mut Cursor) -> Option<Result<ASTNode, ParseError>> {
     let next = cursor.next()?;
     Some(match next {
@@ -286,15 +362,28 @@ fn parse_tokens(cursor: &mut Cursor) -> Option<Result<ASTNode, ParseError>> {
         | Token::True
         | Token::False => parse_expression(cursor),
 
+        Token::If => parse_if_expression(cursor),
+        Token::Fn => parse_function(cursor),
+        Token::Delete => parse_variable_delete(cursor),
+        Token::Identifier(_) => parse_function_call(cursor),
+
         Token::LeftSquareBracket => parse_list(cursor),
         Token::Match => parse_match_expression(cursor),
+        Token::EOF => Err(ParseError::EOF),
         _ => Err(ParseError::InvalidToken),
     })
 }
 pub fn parse(tokens: Vec<Token>) -> Result<Vec<ASTNode>, ParseError> {
     let mut nodes = Vec::new();
-    let mut cursor = Cursor::new(tokens);
+
+    let mut new_tokens = tokens.clone();
+    new_tokens.push(Token::EOF);
+    let mut cursor = Cursor::new(new_tokens);
+
     while let Some(token) = parse_tokens(&mut cursor) {
+        if token == Err(ParseError::EOF) {
+            break;
+        }
         nodes.push(token?);
     }
     Ok(nodes)

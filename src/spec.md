@@ -86,6 +86,16 @@ What we want to parse:
 
   ```
 
+- if:
+  if statements can be created with the if keyword:
+  ```
+  if x == 3 then
+    print "x is three"
+  else
+    print "x is not three"
+  end
+  ```
+
 Grammar for the language:
 
 ```
