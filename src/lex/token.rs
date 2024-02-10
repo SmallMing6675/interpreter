@@ -27,7 +27,6 @@ pub enum Token {
     Xor,
 
     Pipe,
-    Delete,
 
     FatArrow,
     Underscore,
@@ -64,6 +63,8 @@ pub enum Token {
     RightParenthesis,
     Semicolon,
     Comma,
+    Colon,
 
     LeftArrow,
+    Start,
 }

@@ -1,8 +1,8 @@
 #[derive(Debug, PartialEq, Clone)]
 pub enum ASTNode {
-    VariableDeclaration(String, Box<ASTNode>),
+    VariableDeclaration(String, Box<ASTNode>, Option<Type>),
     FunctionDefinition(String, Vec<Parameter>, Box<ASTNode>),
-    FunctionCall(String, Box<ASTNode>),
+    FunctionCall(Box<ASTNode>, Box<ASTNode>),
     TypeDeclaration(String, Type),
     Literal(Literal),
     VariableUsage(String, Option<Type>),

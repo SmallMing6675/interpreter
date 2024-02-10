@@ -133,57 +133,48 @@ fn parse_string(cursor: &mut Cursor) -> Option<Result<Token, LexerError>> {
         '+' => Ok(Token::Plus),
         '-' => {
             cursor.next();
-            match cursor.peek_increment()? {
+            match cursor.peek()? {
                 '>' => Ok(Token::LeftArrow),
-                _ => {
-                    cursor.back();
-                    Ok(Token::Minus)
-                }
+                '0'..='9' => Ok(match parse_number_literal(cursor) {
+                    Ok(Token::FloatLiteral(number)) => Token::FloatLiteral(-number),
+                    Ok(Token::IntegerLiteral(number)) => Token::IntegerLiteral(-number),
+                    Err(err) => return Some(Err(err)),
+                    _ => unreachable!(),
+                }),
+                _ => Ok(Token::Minus),
             }
         }
 
         '*' => Ok(Token::Multiply),
-        '/' => {
-            cursor.next();
-            match cursor.peek_increment()? {
-                '/' => Ok(Token::FloorDiv),
-                _ => {
-                    cursor.back();
-                    Ok(Token::Divide)
-                }
+        '/' => match cursor.next()? {
+            '/' => Ok(Token::FloorDiv),
+            _ => {
+                cursor.back();
+                Ok(Token::Divide)
             }
-        }
-        '>' => {
-            cursor.next();
-            match cursor.peek_increment()? {
-                '=' => Ok(Token::GreaterThanOrEqual),
-                _ => {
-                    cursor.back();
-                    Ok(Token::GreaterThan)
-                }
+        },
+        '>' => match cursor.next()? {
+            '=' => Ok(Token::GreaterThanOrEqual),
+            _ => {
+                cursor.back();
+                Ok(Token::GreaterThan)
             }
-        }
-        '<' => {
-            cursor.next();
-            match cursor.peek_increment()? {
-                '=' => Ok(Token::LessThanOrEqual),
-                _ => {
-                    cursor.back();
-                    Ok(Token::LessThan)
-                }
+        },
+        '<' => match cursor.next()? {
+            '=' => Ok(Token::LessThanOrEqual),
+            _ => {
+                cursor.back();
+                Ok(Token::LessThan)
             }
-        }
-        '=' => {
-            cursor.next();
-            match cursor.peek_increment()? {
-                '=' => Ok(Token::Equal),
-                '>' => Ok(Token::FatArrow),
-                _ => {
-                    cursor.back();
-                    Ok(Token::Assign)
-                }
+        },
+        '=' => match cursor.next()? {
+            '=' => Ok(Token::Equal),
+            '>' => Ok(Token::FatArrow),
+            _ => {
+                cursor.back();
+                Ok(Token::Assign)
             }
-        }
+        },
         '[' => Ok(Token::LeftSquareBracket),
         ']' => Ok(Token::RightSquareBracket),
         '{' => Ok(Token::LeftCurlyBracket),
@@ -191,6 +182,7 @@ fn parse_string(cursor: &mut Cursor) -> Option<Result<Token, LexerError>> {
         '(' => Ok(Token::LeftParenthesis),
         ')' => Ok(Token::RightParenthesis),
         ';' => Ok(Token::Semicolon),
+        ':' => Ok(Token::Colon),
         ',' => Ok(Token::Comma),
         '|' => Ok(Token::Pipe),
         '&' => Ok(Token::And),

@@ -15,8 +15,12 @@ impl Cursor {
         }
     }
 
-    fn get_index(&self) -> usize {
+    pub fn get_index(&self) -> usize {
         return self.current;
+    }
+
+    pub fn set_index(&mut self, index: usize) {
+        self.current = index;
     }
 
     fn increment_index(&mut self) {
@@ -28,13 +32,26 @@ impl Cursor {
     }
 
     fn decrement_index(&mut self) {
-        self.current -= 1;
+        if self.current == 0 {
+            self.current = usize::MAX;
+        } else {
+            self.current -= 1;
+        }
     }
 
     /// increments the index and return the next token in the cursor.
     pub fn next(&mut self) -> Option<&Token> {
         self.increment_index();
+
         self.peek()
+    }
+
+    pub fn get_next(&mut self) -> Result<&Token, ParseError> {
+        self.increment_index();
+        match self.peek().ok_or(ParseError::UnexpectedEOF)? {
+            Token::EOF => Err(ParseError::EOF),
+            token => Ok(token),
+        }
     }
 
     /// Peeks the current index and  increments the index.
