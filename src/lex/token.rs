@@ -3,7 +3,6 @@ use crate::parse::ast::Type;
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     // Variable assignment
-    Mod,
     Empty,
     Assign,
     Del,

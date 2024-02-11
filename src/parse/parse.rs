@@ -8,7 +8,7 @@ pub enum ParseError {
     MismatchedParens,
     ExpectedType(Token),
     ExpectedVariable(Token, Token),
-    InvalidToken,
+    InvalidToken(Token),
     InvalidAssign(Token),
     UnexpectedEOF,
     EOF,
@@ -309,6 +309,7 @@ fn parse_if_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
     }
 
     cursor.expect_token(Token::End)?;
+    cursor.back();
 
     Ok(ASTNode::If(Box::new(condition), Box::new(then_block), None))
 }
@@ -358,15 +359,17 @@ fn parse_function_call(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
 fn parse_identifier(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
     let identifier = match cursor.peek().ok_or(ParseError::UnexpectedEOF)? {
         Token::Identifier(identifier) => String::from(identifier),
-        _ => return Err(ParseError::InvalidToken),
+        token => return Err(ParseError::InvalidToken(token.clone())),
     };
+
     match cursor.next().ok_or(ParseError::UnexpectedEOF)? {
         Token::Assign => {
             cursor.next();
-
+            let result = parse_expression(cursor)?;
+            cursor.back();
             Ok(ASTNode::VariableDeclaration(
                 identifier,
-                Box::new(parse_expression(cursor)?),
+                Box::new(result),
                 None,
             ))
         }
@@ -379,15 +382,64 @@ fn parse_identifier(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
                 Token::Assign => {
                     cursor.next();
 
+                    let result = parse_expression(cursor)?;
+                    cursor.back();
                     Ok(ASTNode::VariableDeclaration(
                         identifier,
-                        Box::new(parse_expression(cursor)?),
+                        Box::new(result),
                         Some(type_),
                     ))
                 }
                 _ => return Err(ParseError::UnexpectedToken(Token::Assign)),
             }
         }
+
+        Token::Plus
+        | Token::Minus
+        | Token::Multiply
+        | Token::Divide
+        | Token::And
+        | Token::Or
+        | Token::Not
+        | Token::Xor
+        | Token::Equal
+        | Token::NotEqual
+        | Token::Modulo
+        | Token::LessThan
+        | Token::GreaterThan
+        | Token::LessThanOrEqual
+        | Token::GreaterThanOrEqual => {
+            let left = ASTNode::VariableUsage(identifier.clone(), None); // Create ASTNode for variable usage
+            let operator = match cursor.peek().ok_or(ParseError::UnexpectedEOF)? {
+                Token::Plus => BinaryOperator::Plus,
+                Token::Minus => BinaryOperator::Minus,
+                Token::Multiply => BinaryOperator::Multiply,
+                Token::Divide => BinaryOperator::Divide,
+                Token::And => BinaryOperator::And,
+
+                Token::Or => BinaryOperator::Or,
+                Token::Not => BinaryOperator::Not,
+                Token::Xor => BinaryOperator::Xor,
+                Token::Equal => BinaryOperator::Equal,
+                Token::NotEqual => BinaryOperator::NotEqual,
+                Token::Modulo => BinaryOperator::Modulo,
+                Token::LessThan => BinaryOperator::LessThan,
+                Token::GreaterThan => BinaryOperator::GreaterThan,
+                Token::LessThanOrEqual => BinaryOperator::LessThanOrEqual,
+                Token::GreaterThanOrEqual => BinaryOperator::GreaterThanOrEqual,
+                _ => unreachable!(), // These tokens are already handled by the match arm
+            };
+            cursor.next();
+
+            let right = parse_expression(cursor)?;
+            cursor.back();
+            Ok(ASTNode::BinaryOperation(
+                Box::new(left),
+                operator,
+                Box::new(right),
+            ))
+        }
+
         Token::EOF => Ok(ASTNode::VariableUsage(identifier, None)),
         _ => {
             cursor.back();
@@ -412,7 +464,7 @@ fn parse_tokens(cursor: &mut Cursor) -> Option<Result<ASTNode, ParseError>> {
         Token::LeftSquareBracket => parse_list(cursor),
         Token::Match => parse_match_expression(cursor),
         Token::EOF => Err(ParseError::EOF),
-        _ => Err(ParseError::InvalidToken),
+        token => Err(ParseError::InvalidToken(token.clone())),
     })
 }
 pub fn parse(tokens: Vec<Token>) -> Result<Vec<ASTNode>, ParseError> {

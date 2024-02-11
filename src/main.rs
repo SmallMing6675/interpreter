@@ -1,3 +1,5 @@
+use compiler::eval::eval::eval;
+use compiler::eval::eval::Environment;
 use compiler::lex::lex::lex;
 use compiler::parse::parse::parse;
 use std::env;
@@ -9,24 +11,30 @@ use std::process;
 fn main() {
     let args: Vec<String> = env::args().collect();
 
+    println!("Welcome to the REPL! Enter Ctrl+C to exit.");
     if args.len() != 2 {
+        let mut lines = Vec::new();
         loop {
-            print!(">> ");
-            io::stdout().flush().unwrap();
-
-            // Read input from the user
             let mut input = String::new();
             io::stdin()
                 .read_line(&mut input)
                 .expect("Failed to read line");
 
-            // Lex and parse input
-            let tokens = lex(&input).expect("Failed to lex input");
+            lines.push(input.trim().to_string());
 
-            println!("{:?}", tokens);
+            println!("Lines: {:?}", lines);
+
+            let tokens = lex(&lines.join(" ")).expect("Failed to lex input");
+
+            println!("Tokens: {:?}", tokens);
             let ast = parse(tokens).expect("Failed to parse input");
 
-            println!("{:?}", ast);
+            println!("AST: {:?}", ast);
+            let env = &mut Environment::new();
+            for node in ast {
+                let value = eval(&node, env).unwrap();
+                println!("Result: {:?}", value);
+            }
         }
     }
 
