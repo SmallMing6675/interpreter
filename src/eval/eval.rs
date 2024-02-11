@@ -32,14 +32,16 @@ impl Environment {
         }
     }
 
-    pub fn set(&mut self, key: String, value: Value) {
+    pub fn set(&mut self, key: String, value: Value) -> &mut Environment {
         self.store.insert(key, value);
+        return self;
     }
 
     pub fn delete(&mut self, key: String) -> Option<Value> {
         self.store.remove(&key)
     }
 }
+
 #[derive(Clone, Debug)]
 pub enum Value {
     Int(i64),
@@ -47,7 +49,7 @@ pub enum Value {
     Str(String),
     Bool(bool),
     List(Vec<Value>),
-    Function(String, Vec<Parameter>, ASTNode),
+    Function(Parameter, ASTNode),
     Empty, // Used for operations that does not have a value (Not null)
 }
 
@@ -58,7 +60,6 @@ impl Value {
             (Value::Float(val), Type::Int) => Value::Int(val as i64),
             (Value::Int(val), Type::Bool) => Value::Bool(val != 0),
             (Value::Float(val), Type::Bool) => Value::Bool(val != 0.0),
-            // Add more conversions as needed
             _ => todo!(), // Handle other conversions or return an error
         }
     }
@@ -117,22 +118,57 @@ pub fn eval(node: &ASTNode, env: &mut Environment) -> Result<Value, EvalError> {
 
         ASTNode::If(condition, then, else_) => evaluate_if(condition, then, else_, env),
 
-        ASTNode::FunctionDefinition(name, parameters, body) => {
-            eval_function(name.to_string(), parameters, body, env)
+        ASTNode::FunctionDefinition(param, body) => eval_function_def(param.clone(), body, env),
+
+        ASTNode::InlineFunction(params, body) => Ok(Value::Function(
+            params[0].clone(),
+            if params.len() == 1 {
+                *body.clone()
+            } else {
+                parse_inline_function(params[1..].to_vec(), *body.clone(), env)?
+            },
+        )),
+        ASTNode::FunctionCall(function_name, arg) => {
+            let func = eval(function_name, env)?;
+            match func {
+                Value::Function(param, body) => eval(
+                    &body,
+                    Environment::new_enclosed(env).set(param.identifier, eval(arg, env)?),
+                ),
+                _ => Err(EvalError::NotAFunction),
+            }
         }
 
         _ => unimplemented!("Evaluation not implemented for this ASTNode variant"),
     }
 }
 
-fn eval_function(
-    name: String,
-    parameters: &Vec<Parameter>,
+// fn a b = a + b
+// |-> function(a) -> function(b) -> a + b
+fn parse_inline_function(
+    params: Vec<Parameter>,
+    body: ASTNode,
+    env: &mut Environment,
+) -> Result<ASTNode, EvalError> {
+    if params.len() == 1 {
+        Ok(ASTNode::FunctionDefinition(
+            params[0].clone(),
+            Box::new(body),
+        ))
+    } else {
+        Ok(ASTNode::FunctionDefinition(
+            params[0].clone(),
+            Box::new(parse_inline_function(params[1..].to_vec(), body, env)?),
+        ))
+    }
+}
+
+fn eval_function_def(
+    parameter: Parameter,
     body: &ASTNode,
     env: &mut Environment,
 ) -> Result<Value, EvalError> {
-    let func_value = Value::Function(name.clone(), parameters.clone(), body.clone());
-    env.set(name, func_value.clone());
+    let func_value = Value::Function(parameter.clone(), body.clone());
 
     Ok(func_value)
 }

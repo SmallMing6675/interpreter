@@ -1,14 +1,14 @@
 #[derive(Debug, PartialEq, Clone)]
 pub enum ASTNode {
     VariableDeclaration(String, Box<ASTNode>, Option<Type>),
-    FunctionDefinition(String, Vec<Parameter>, Box<ASTNode>),
-    FunctionCall(Box<ASTNode>, Box<ASTNode>),
+    FunctionDefinition(Parameter, Box<ASTNode>),
+    FunctionCall(Box<ASTNode>, Box<ASTNode>), //name, arg
     TypeDeclaration(String, Type),
     Literal(Literal),
     VariableUsage(String, Option<Type>),
     BinaryOperation(Box<ASTNode>, BinaryOperator, Box<ASTNode>),
     VariableDeletion(String),
-    InlineFunction(Vec<String>, Box<ASTNode>),
+    InlineFunction(Vec<Parameter>, Box<ASTNode>),
     If(Box<ASTNode>, Box<ASTNode>, Option<Box<ASTNode>>),
     Match(Box<ASTNode>, Vec<ASTMatchArm>),
 }
@@ -16,7 +16,7 @@ pub enum ASTNode {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Parameter {
     pub identifier: String,
-    pub type_: Type,
+    pub type_: Option<Type>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

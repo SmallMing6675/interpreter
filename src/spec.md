@@ -32,7 +32,7 @@ What we want to parse:
     ```
       add: int -> int -> int
       # add is a function that takes in two numbers and adds them together
-      add x y = |x+y|
+      add x y = x+y
     ```
 
   - use the do keyword to define longer functions:
@@ -49,6 +49,8 @@ What we want to parse:
       f x `Same as f(x)`
     - function calls can be chained:
       bar foo x`same as bar(foo(x))`
+    - use `|` to end a chained function call:
+      bar foo x | bar x | foo x
 
 - Types:
 

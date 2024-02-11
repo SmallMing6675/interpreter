@@ -16,6 +16,7 @@ pub enum ParseError {
     ExpectedIdentifier,
     NotAFunction,
     InvalidExpression,
+    EmptyFunctionCall,
 }
 /// Parses a type of a variable.
 /// @param &mut cursor: the cursor to look for.
@@ -71,6 +72,9 @@ fn parse_type(cursor: &mut Cursor) -> Result<Type, ParseError> {
 ///      end
 ///
 fn parse_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
+    if cursor.peek() == Some(&Token::Fn) {
+        return parse_function(cursor);
+    }
     fn parse_binary_expression(
         cursor: &mut Cursor,
         precedence: usize,
@@ -195,15 +199,15 @@ fn parse_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
 ///                                 end
 ///
 fn parse_function(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
-    cursor.next();
-    cursor.expect_token(Token::Fn)?;
-    cursor.back();
     let mut function_params = Vec::new();
+    eprintln!("{:?}", cursor);
+
     while cursor.get_next()? != &Token::Assign {
         match cursor.peek().ok_or(ParseError::UnexpectedEOF)? {
-            Token::Identifier(name) => {
-                function_params.push(name.clone());
-            }
+            Token::Identifier(name) => function_params.push(Parameter {
+                identifier: name.to_string(),
+                type_: None,
+            }),
             token => {
                 return Err(ParseError::ExpectedVariable(
                     Token::Identifier(String::new()),
@@ -344,16 +348,23 @@ fn parse_function_call(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
 
     let arguments = parse_argument_list(cursor)?;
 
+    eprintln!("function args: {:?}", arguments);
+    // Modify this function  so that it parse `add 2 3` as fcall(fcall(add, 2), 3)
+    // add_three 3 4 5 -> fcall(fcall(fcall(add_three, 3), 4), 5)
     fn build_function_call_chain(arguments: Vec<ASTNode>) -> Result<ASTNode, ParseError> {
         match arguments.len() {
             1 => Ok(arguments[0].clone()),
             _ => Ok(ASTNode::FunctionCall(
-                Box::new(arguments[0].clone()),
-                Box::new(build_function_call_chain(arguments[1..].to_vec())?),
+                Box::new(build_function_call_chain(
+                    arguments[..arguments.len() - 1].to_vec(),
+                )?),
+                Box::new(arguments.last().unwrap().clone()),
             )),
         }
     }
-    return Ok(build_function_call_chain(arguments)?);
+    let node = build_function_call_chain(arguments)?;
+    eprintln!("call chain: {:?}", node);
+    return Ok(node);
 }
 
 fn parse_identifier(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
