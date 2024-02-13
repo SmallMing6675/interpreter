@@ -3,6 +3,7 @@ use compiler::eval::eval::Environment;
 use compiler::lex::lex::lex;
 use compiler::parse::parse::parse;
 use std::env;
+use std::fmt::write;
 use std::fs;
 use std::io;
 use std::io::Write;
@@ -22,32 +23,32 @@ fn main() {
                 .read_line(&mut input)
                 .expect("Failed to read line");
 
-            lines.push(input.trim().to_string());
-
             if debug_mode {
-                println!("Lines: {:?}", lines);
-            }
+                lines.push(input.trim().to_string());
 
-            let tokens = lex(&lines.join("\n")).expect("Failed to lex input");
+                println!("Lines: {:#?}", lines);
+                let tokens = lex(&lines.join("\n")).expect("Failed to lex input");
 
-            if debug_mode {
-                println!("Tokens: {:?}", tokens);
-            }
-            let ast = parse(tokens).expect("Failed to parse input");
+                println!("Tokens: {:#?}", tokens);
+                let ast = parse(tokens).expect("Failed to parse input");
 
-            if debug_mode {
-                println!("AST: {:?}", ast);
-            }
-            let env = &mut Environment::new();
-            for node in &ast {
-                let value = eval(node, env).unwrap();
-                if debug_mode {
-                    println!("Result: {:?}", value);
+                println!("AST: {:#?}", ast);
+                let env = &mut Environment::new();
+                for node in &ast {
+                    let value = eval(node, env).unwrap();
+                    println!("Result: {:#?}", value);
+                }
+            } else {
+                lines.push(input.trim().to_string());
+                let tokens = lex(&lines.join("\n")).expect("Failed to lex input");
+                let ast = parse(tokens).expect("Failed to parse input");
+                let env = &mut Environment::new();
+                let (last, elements) = ast.split_last().unwrap();
+                for node in elements {
+                    let _ = eval(node, env).unwrap();
                 }
 
-                if Some(node) == ast.last() {
-                    println!("{:?}", value);
-                }
+                println!("{:?}", eval(last, env).unwrap());
             }
         }
     }

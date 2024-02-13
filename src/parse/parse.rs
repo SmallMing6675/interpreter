@@ -82,6 +82,7 @@ fn parse_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
         precedence: usize,
     ) -> Result<ASTNode, ParseError> {
         let mut left = parse_primary_expression(cursor)?;
+
         while let Some(operator) = get_operator(cursor.peek()) {
             let operator_precedence = get_precedence(&operator);
 
@@ -90,7 +91,7 @@ fn parse_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
             }
 
             cursor.next(); // Consume the operator
-            let right = parse_primary_expression(cursor)?;
+            let right = parse_binary_expression(cursor, operator_precedence)?;
 
             left = ASTNode::BinaryOperation(Box::new(left), operator, Box::new(right));
         }
@@ -124,13 +125,16 @@ fn parse_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
             Token::True => Ok(ASTNode::Literal(Literal::True)),
             Token::False => Ok(ASTNode::Literal(Literal::False)),
             _ => {
+                cursor.back();
                 if cursor.peek().ok_or(ParseError::UnexpectedEOF)? != &Token::LeftParenthesis {
                     return Err(ParseError::InvalidExpression);
                 }
-                let inner_expression = parse_expression(cursor);
+                cursor.next();
+                let inner_expression = parse_expression(cursor)?;
+
                 if cursor.peek().ok_or(ParseError::UnexpectedEOF)? == &Token::RightParenthesis {
                     cursor.next(); // Consume the right bracket
-                    Ok(inner_expression?)
+                    Ok(inner_expression)
                 } else {
                     Err(ParseError::MismatchedParens)
                 }
@@ -218,7 +222,7 @@ fn parse_function(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
         }
     }
     cursor.next();
-    let expression = parse_expression(cursor)?;
+    let expression = parse_tokens(cursor).ok_or(ParseError::UnexpectedEOF)??;
     Ok(ASTNode::InlineFunction(
         function_params,
         Box::new(expression),
@@ -236,15 +240,15 @@ fn parse_list(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
 
     cursor.next();
     loop {
-        let element = parse_expression(cursor).unwrap();
-        elements.push(element);
-
         if cursor.peek().ok_or(ParseError::UnexpectedEOF)? == &Token::RightSquareBracket {
             break;
         }
         if cursor.peek().ok_or(ParseError::UnexpectedEOF)? == &Token::Comma {
             cursor.expect_token(Token::Comma)?;
         }
+
+        let element = parse_tokens(cursor).ok_or(ParseError::NotAFunction)??;
+        elements.push(element);
     }
 
     cursor.expect_token(Token::RightSquareBracket)?;
