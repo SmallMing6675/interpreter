@@ -65,5 +65,5 @@ pub enum Token {
     Colon,
 
     LeftArrow,
-    Start,
+    Newline,
 }

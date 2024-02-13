@@ -1,3 +1,4 @@
+use crate::eval::builtins::BUILTIN_FUNCTIONS;
 use crate::parse::ast::*;
 use std::collections::HashMap;
 
@@ -18,27 +19,24 @@ impl Environment {
     pub fn new_enclosed(outer: &Environment) -> Self {
         Environment {
             store: HashMap::new(),
-            outer: Some(Box::new(outer.clone())),
+            outer: Some(Box::new(outer.clone())), // Clone the reference, not the Environment
         }
     }
 
-    pub fn get(&self, key: &str) -> Option<Value> {
+    pub fn get(&self, key: &str) -> Option<&Value> {
         match self.store.get(key) {
-            Some(value) => Some(value.clone()),
-            None => match &self.outer {
-                Some(outer_env) => outer_env.get(key),
-                None => None,
-            },
+            Some(value) => Some(value),
+            None => self.outer.as_ref().and_then(|outer_env| outer_env.get(key)),
         }
     }
 
-    pub fn set(&mut self, key: String, value: Value) -> &mut Environment {
+    pub fn set(&mut self, key: String, value: Value) -> &mut Self {
         self.store.insert(key, value);
-        return self;
+        self
     }
 
-    pub fn delete(&mut self, key: String) -> Option<Value> {
-        self.store.remove(&key)
+    pub fn delete(&mut self, key: &str) -> Option<Value> {
+        self.store.remove(key)
     }
 }
 
@@ -49,38 +47,39 @@ pub enum Value {
     Str(String),
     Bool(bool),
     List(Vec<Value>),
-    Function(Parameter, ASTNode),
+    Function(Parameter, ASTNode, Environment),
+    BuiltinFunction(String, Parameter, fn(Value) -> Value),
     Empty, // Used for operations that does not have a value (Not null)
 }
 
 impl Value {
-    pub fn cast(self, type_: Type) -> Self {
+    pub fn cast(&self, type_: Type) -> Self {
         match (self, type_) {
-            (Value::Int(val), Type::Float) => Value::Float(val as f64),
-            (Value::Float(val), Type::Int) => Value::Int(val as i64),
-            (Value::Int(val), Type::Bool) => Value::Bool(val != 0),
-            (Value::Float(val), Type::Bool) => Value::Bool(val != 0.0),
+            (Value::Int(val), Type::Float) => Value::Float(*val as f64),
+            (Value::Float(val), Type::Int) => Value::Int(*val as i64),
+            (Value::Int(val), Type::Bool) => Value::Bool(*val != 0),
+            (Value::Float(val), Type::Bool) => Value::Bool(*val != 0.0),
             _ => todo!(), // Handle other conversions or return an error
         }
     }
 
     pub fn get_type(&self) -> Result<Type, EvalError> {
-        Ok(match self {
-            Value::Int(_) => Type::Int,
-            Value::Float(_) => Type::Float,
-            Value::Bool(_) => Type::Bool,
-            Value::Str(_) => Type::Str,
-            Value::List(values) => Type::List(Box::new(values[0].get_type()?)),
-            _ => return Err(EvalError::InvalidType),
-        })
+        match self {
+            Value::Int(_) => Ok(Type::Int),
+            Value::Float(_) => Ok(Type::Float),
+            Value::Bool(_) => Ok(Type::Bool),
+            Value::Str(_) => Ok(Type::Str),
+            Value::List(values) => Ok(Type::List(Box::new(values[0].get_type()?))),
+            _ => Err(EvalError::InvalidType),
+        }
     }
 
     pub fn truthy(&self) -> bool {
         match self {
             Value::Int(int) => *int != 0,
             Value::Float(float) => *float != 0.0,
-            Value::Str(str) => str.len() != 0,
-            Value::List(list) => list.len() != 0,
+            Value::Str(str) => !str.is_empty(),
+            Value::List(list) => !list.is_empty(),
             Value::Bool(bool) => *bool,
             _ => false,
         }
@@ -90,7 +89,7 @@ impl Value {
 pub fn eval(node: &ASTNode, env: &mut Environment) -> Result<Value, EvalError> {
     match node {
         ASTNode::Literal(literal) => evaluate_literal(literal, env),
-        ASTNode::VariableUsage(name, _) => lookup_variable(name, env),
+        ASTNode::VariableUsage(name, _) => lookup_variable(name, env).cloned(),
         ASTNode::BinaryOperation(left, op, right) => {
             let left_value = eval(left, env)?;
             let right_value = eval(right, env)?;
@@ -101,17 +100,22 @@ pub fn eval(node: &ASTNode, env: &mut Environment) -> Result<Value, EvalError> {
             if env.get(name).is_some() {
                 return Err(EvalError::AlreadyDefined(name.to_string()));
             }
-            let mut value = eval(value, env)?;
-            value = match type_ {
-                Some(type_) if value.get_type()? != *type_ => value.clone().cast(type_.clone()),
-                _ => value,
+            let value = eval(value, env)?;
+            let value = if let Some(type_) = type_ {
+                if value.get_type()? != *type_ {
+                    value.cast(type_.clone())
+                } else {
+                    value
+                }
+            } else {
+                value
             };
 
             env.set(name.to_string(), value.clone());
             Ok(value)
         }
 
-        ASTNode::VariableDeletion(name) => match env.delete(name.to_string()) {
+        ASTNode::VariableDeletion(name) => match env.delete(name) {
             Some(_) => Ok(Value::Empty),
             None => Err(EvalError::VariableNotFound(name.to_string())),
         },
@@ -120,21 +124,30 @@ pub fn eval(node: &ASTNode, env: &mut Environment) -> Result<Value, EvalError> {
 
         ASTNode::FunctionDefinition(param, body) => eval_function_def(param.clone(), body, env),
 
-        ASTNode::InlineFunction(params, body) => Ok(Value::Function(
-            params[0].clone(),
-            if params.len() == 1 {
-                *body.clone()
+        ASTNode::InlineFunction(params, body) => {
+            let param = params[0].clone();
+            let func_body = if params.len() == 1 {
+                body.clone()
             } else {
-                parse_inline_function(params[1..].to_vec(), *body.clone(), env)?
-            },
-        )),
+                Box::new(parse_inline_function(
+                    params[1..].to_vec(),
+                    body.clone(),
+                    env,
+                )?)
+            };
+            Ok(Value::Function(param, *func_body, env.clone()))
+        }
+
         ASTNode::FunctionCall(function_name, arg) => {
             let func = eval(function_name, env)?;
             match func {
-                Value::Function(param, body) => eval(
-                    &body,
-                    Environment::new_enclosed(env).set(param.identifier, eval(arg, env)?),
-                ),
+                Value::Function(param, body, mut func_env) => {
+                    let arg_value = eval(arg, &mut func_env)?;
+                    func_env.set(param.identifier.clone(), arg_value);
+                    eval(&body, &mut func_env)
+                }
+
+                Value::BuiltinFunction(_, _, func) => Ok(func(eval(arg, env)?)),
                 _ => Err(EvalError::NotAFunction),
             }
         }
@@ -147,14 +160,11 @@ pub fn eval(node: &ASTNode, env: &mut Environment) -> Result<Value, EvalError> {
 // |-> function(a) -> function(b) -> a + b
 fn parse_inline_function(
     params: Vec<Parameter>,
-    body: ASTNode,
+    body: Box<ASTNode>,
     env: &mut Environment,
 ) -> Result<ASTNode, EvalError> {
     if params.len() == 1 {
-        Ok(ASTNode::FunctionDefinition(
-            params[0].clone(),
-            Box::new(body),
-        ))
+        Ok(ASTNode::FunctionDefinition(params[0].clone(), body))
     } else {
         Ok(ASTNode::FunctionDefinition(
             params[0].clone(),
@@ -168,7 +178,7 @@ fn eval_function_def(
     body: &ASTNode,
     env: &mut Environment,
 ) -> Result<Value, EvalError> {
-    let func_value = Value::Function(parameter.clone(), body.clone());
+    let func_value = Value::Function(parameter.clone(), body.clone(), env.clone());
 
     Ok(func_value)
 }
@@ -203,7 +213,11 @@ fn evaluate_literal(literal: &Literal, env: &mut Environment) -> Result<Value, E
     }
 }
 
-fn lookup_variable(name: &str, env: &Environment) -> Result<Value, EvalError> {
+fn lookup_variable<'a>(name: &str, env: &'a Environment) -> Result<&'a Value, EvalError> {
+    match BUILTIN_FUNCTIONS.get(name) {
+        Some(func) => return Ok(func),
+        None => (),
+    };
     env.get(name)
         .ok_or_else(|| EvalError::VariableNotFound(name.to_string()))
 }

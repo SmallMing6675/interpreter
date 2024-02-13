@@ -12,6 +12,8 @@ pub enum ParseError {
     InvalidAssign(Token),
     UnexpectedEOF,
     EOF,
+
+    Empty,
     Underflow,
     ExpectedIdentifier,
     NotAFunction,
@@ -200,7 +202,6 @@ fn parse_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
 ///
 fn parse_function(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
     let mut function_params = Vec::new();
-    eprintln!("{:?}", cursor);
 
     while cursor.get_next()? != &Token::Assign {
         match cursor.peek().ok_or(ParseError::UnexpectedEOF)? {
@@ -348,7 +349,6 @@ fn parse_function_call(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
 
     let arguments = parse_argument_list(cursor)?;
 
-    eprintln!("function args: {:?}", arguments);
     // Modify this function  so that it parse `add 2 3` as fcall(fcall(add, 2), 3)
     // add_three 3 4 5 -> fcall(fcall(fcall(add_three, 3), 4), 5)
     fn build_function_call_chain(arguments: Vec<ASTNode>) -> Result<ASTNode, ParseError> {
@@ -363,7 +363,6 @@ fn parse_function_call(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
         }
     }
     let node = build_function_call_chain(arguments)?;
-    eprintln!("call chain: {:?}", node);
     return Ok(node);
 }
 
@@ -475,6 +474,7 @@ fn parse_tokens(cursor: &mut Cursor) -> Option<Result<ASTNode, ParseError>> {
         Token::LeftSquareBracket => parse_list(cursor),
         Token::Match => parse_match_expression(cursor),
         Token::EOF => Err(ParseError::EOF),
+        Token::Newline | Token::Comment(_) => Err(ParseError::Empty),
         token => Err(ParseError::InvalidToken(token.clone())),
     })
 }
@@ -487,6 +487,10 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<ASTNode>, ParseError> {
         if token == Err(ParseError::EOF) {
             break;
         }
+        if token == Err(ParseError::Empty) {
+            continue;
+        }
+
         nodes.push(token?);
     }
     Ok(nodes)

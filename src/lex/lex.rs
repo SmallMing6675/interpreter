@@ -198,7 +198,8 @@ fn parse_string(cursor: &mut Cursor) -> Option<Result<Token, LexerError>> {
                 }
             }
         }
-        ' ' | '\t' | '\n' | '\r' => Ok(Token::Empty),
+        '\n' => Ok(Token::Newline),
+        ' ' | '\t' | '\r' => Ok(Token::Empty),
         '#' => parse_comment(cursor),
         _ => Err(LexerError::InvalidCharacter(next)),
     })

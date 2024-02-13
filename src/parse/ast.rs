@@ -27,6 +27,7 @@ pub enum Type {
     Bool,
     List(Box<Type>),
     Function(Box<Type>, Box<Type>),
+    Any,
 }
 
 #[derive(Debug, PartialEq, Clone)]
