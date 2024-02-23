@@ -41,6 +41,7 @@ mod tests {
         let source_code = "# This is a comment \n 1 + 2";
         let expected_tokens = vec![
             Token::Comment(" This is a comment ".to_string()),
+            Token::Newline,
             Token::IntegerLiteral(1),
             Token::Plus,
             Token::IntegerLiteral(2),

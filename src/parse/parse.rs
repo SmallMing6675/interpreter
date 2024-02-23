@@ -237,14 +237,9 @@ fn parse_function(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
 ///
 fn parse_list(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
     let mut elements = Vec::new();
-
-    cursor.next();
     loop {
         if cursor.peek().ok_or(ParseError::UnexpectedEOF)? == &Token::RightSquareBracket {
             break;
-        }
-        if cursor.peek().ok_or(ParseError::UnexpectedEOF)? == &Token::Comma {
-            cursor.expect_token(Token::Comma)?;
         }
 
         let element = parse_tokens(cursor).ok_or(ParseError::NotAFunction)??;
@@ -302,13 +297,16 @@ fn parse_if_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
     cursor.expect_token(Token::If)?;
     let condition = parse_expression(cursor)?;
     cursor.expect_token(Token::Then)?;
+
+    cursor.back();
     cursor.back();
 
-    let then_block = parse_tokens(cursor).ok_or(ParseError::UnexpectedEOF)??;
+    let then_block = parse_tokens_skip_line(cursor).ok_or(ParseError::UnexpectedEOF)??;
+
     if cursor.expect_token(Token::Else).is_ok() {
         cursor.back();
 
-        let else_block = parse_tokens(cursor).ok_or(ParseError::UnexpectedEOF)??;
+        let else_block = parse_tokens_skip_line(cursor).ok_or(ParseError::UnexpectedEOF)??;
         let _ = cursor.expect_token(Token::End);
         return Ok(ASTNode::If(
             Box::new(condition),
@@ -318,7 +316,6 @@ fn parse_if_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
     }
 
     cursor.expect_token(Token::End)?;
-    cursor.back();
 
     Ok(ASTNode::If(Box::new(condition), Box::new(then_block), None))
 }
@@ -460,6 +457,11 @@ fn parse_identifier(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
             parse_function_call(cursor)
         }
     }
+}
+
+fn parse_tokens_skip_line(cursor: &mut Cursor) -> Option<Result<ASTNode, ParseError>> {
+    while cursor.next()? == &Token::Newline {}
+    parse_tokens(cursor)
 }
 fn parse_tokens(cursor: &mut Cursor) -> Option<Result<ASTNode, ParseError>> {
     let next = cursor.next()?;

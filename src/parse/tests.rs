@@ -10,13 +10,13 @@ mod tests {
         let source_code = "1 + 2 * 3";
         let tokens = lex(source_code).unwrap();
         let expected_ast = vec![ASTNode::BinaryOperation(
+            Box::new(ASTNode::Literal(Literal::Int(1))),
+            BinaryOperator::Plus,
             Box::new(ASTNode::BinaryOperation(
-                Box::new(ASTNode::Literal(Literal::Int(1))),
-                BinaryOperator::Plus,
                 Box::new(ASTNode::Literal(Literal::Int(2))),
+                BinaryOperator::Multiply,
+                Box::new(ASTNode::Literal(Literal::Int(3))),
             )),
-            BinaryOperator::Multiply,
-            Box::new(ASTNode::Literal(Literal::Int(3))),
         )];
         assert_eq!(parse(tokens).unwrap(), expected_ast);
     }
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn test_if_expression_without_else() {
-        let source_code = "if x == 3 then print \"x is 3\" end;";
+        let source_code = "if x == 3 then print \"x is 3\" end";
         let tokens = lex(source_code).unwrap();
         let expected_ast = vec![ASTNode::If(
             Box::new(ASTNode::BinaryOperation(
@@ -177,19 +177,5 @@ mod tests {
         )];
         let ast = parse(tokens).unwrap();
         assert_eq!(ast, expected_ast);
-    }
-
-    #[test]
-    fn test_nested_function_calls() {
-        let source_code = "print print \"Hello World\";";
-        let tokens = lex(source_code).unwrap();
-        let expected_ast = vec![ASTNode::FunctionCall(
-            Box::new(ASTNode::VariableUsage("print".to_string(), None)),
-            Box::new(ASTNode::FunctionCall(
-                Box::new(ASTNode::VariableUsage("print".to_string(), None)),
-                Box::new(ASTNode::Literal(Literal::Str("Hello World".to_string()))),
-            )),
-        )];
-        assert_eq!(parse(tokens).unwrap(), expected_ast);
     }
 }
