@@ -1,0 +1,2 @@
+add = fn a b -> a + b 
+print (add 3 4)

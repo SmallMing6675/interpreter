@@ -19,6 +19,8 @@ pub enum ParseError {
     NotAFunction,
     InvalidExpression,
     EmptyFunctionCall,
+    UnmatchedTypes,
+    CannotDenoteType,
 }
 /// Parses a type of a variable.
 /// @param &mut cursor: the cursor to look for.
@@ -73,10 +75,12 @@ fn parse_type(cursor: &mut Cursor) -> Result<Type, ParseError> {
 ///       ^
 ///      end
 ///
+///
 fn parse_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
     if cursor.peek() == Some(&Token::Fn) {
         return parse_function(cursor);
     }
+
     fn parse_binary_expression(
         cursor: &mut Cursor,
         precedence: usize,
@@ -125,15 +129,10 @@ fn parse_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
             Token::True => Ok(ASTNode::Literal(Literal::True)),
             Token::False => Ok(ASTNode::Literal(Literal::False)),
             _ => {
-                cursor.back();
-                if cursor.peek().ok_or(ParseError::UnexpectedEOF)? != &Token::LeftParenthesis {
-                    return Err(ParseError::InvalidExpression);
-                }
-                cursor.next();
                 let inner_expression = parse_expression(cursor)?;
 
                 if cursor.peek().ok_or(ParseError::UnexpectedEOF)? == &Token::RightParenthesis {
-                    cursor.next(); // Consume the right bracket
+                    cursor.next();
                     Ok(inner_expression)
                 } else {
                     Err(ParseError::MismatchedParens)
@@ -200,14 +199,14 @@ fn parse_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
 /// Examples:
 ///      start
 ///       vv
-///  map |fn element = element + 1| arr
+///  map |fn element -> element + 1| arr
 ///                                  ^
 ///                                 end
 ///
 fn parse_function(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
     let mut function_params = Vec::new();
 
-    while cursor.get_next()? != &Token::Assign {
+    while cursor.get_next()? != &Token::LeftArrow {
         match cursor.peek().ok_or(ParseError::UnexpectedEOF)? {
             Token::Identifier(name) => function_params.push(Parameter {
                 identifier: name.to_string(),
@@ -221,8 +220,9 @@ fn parse_function(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
             }
         }
     }
-    cursor.next();
+
     let expression = parse_tokens(cursor).ok_or(ParseError::UnexpectedEOF)??;
+    cursor.next();
     Ok(ASTNode::InlineFunction(
         function_params,
         Box::new(expression),
@@ -298,14 +298,9 @@ fn parse_if_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
     let condition = parse_expression(cursor)?;
     cursor.expect_token(Token::Then)?;
 
-    cursor.back();
-    cursor.back();
-
     let then_block = parse_tokens_skip_line(cursor).ok_or(ParseError::UnexpectedEOF)??;
 
     if cursor.expect_token(Token::Else).is_ok() {
-        cursor.back();
-
         let else_block = parse_tokens_skip_line(cursor).ok_or(ParseError::UnexpectedEOF)??;
         let _ = cursor.expect_token(Token::End);
         return Ok(ASTNode::If(
@@ -313,6 +308,8 @@ fn parse_if_expression(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
             Box::new(then_block),
             Some(Box::new(else_block)),
         ));
+    } else {
+        cursor.back();
     }
 
     cursor.expect_token(Token::End)?;
@@ -340,7 +337,9 @@ fn parse_function_call(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
                 Token::StringLiteral(string) => {
                     arguments.push(ASTNode::Literal(Literal::Str(string.to_string())))
                 }
-
+                Token::LeftParenthesis => {
+                    arguments.push(parse_tokens(cursor).ok_or(ParseError::UnexpectedEOF)??)
+                }
                 _ => {
                     return Ok(arguments);
                 }
@@ -364,9 +363,62 @@ fn parse_function_call(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
         }
     }
     let node = build_function_call_chain(arguments)?;
-    return Ok(node);
+    Ok(node)
 }
 
+fn get_type(node: &ASTNode) -> Result<Type, ParseError> {
+    match node {
+        ASTNode::Literal(Literal::Int(_)) => Ok(Type::Int),
+        ASTNode::Literal(Literal::Str(_)) => Ok(Type::Str),
+        ASTNode::Literal(Literal::Float(_)) => Ok(Type::Float),
+        ASTNode::Literal(Literal::List(nodes)) => {
+            let type_ = get_type(&nodes[0])?;
+            for node in nodes {
+                if get_type(&node)? != type_ {
+                    return Err(ParseError::UnmatchedTypes);
+                }
+            }
+            Ok(type_)
+        }
+        ASTNode::Literal(Literal::True) | ASTNode::Literal(Literal::False) => Ok(Type::Bool),
+        ASTNode::If(_, then_block, else_block) => match else_block {
+            Some(else_block) => {
+                if get_type(&then_block)? != get_type(&else_block)? {
+                    Err(ParseError::UnmatchedTypes)
+                } else {
+                    get_type(&then_block)
+                }
+            }
+            None => get_type(&then_block),
+        },
+        ASTNode::FunctionDefinition(_, body) => get_type(body),
+        ASTNode::BinaryOperation(left, _, right) => {
+            if get_type(&left)? != get_type(&right)? {
+                Err(ParseError::UnmatchedTypes)
+            } else {
+                get_type(&left)
+            }
+        }
+        ASTNode::Match(_, cases) => {
+            let type_ = get_type(match &cases[0] {
+                ASTMatchArm::MatchCondition(_, body) => &body,
+            })?;
+
+            if !cases.iter().all(|element| {
+                get_type(match element {
+                    ASTMatchArm::MatchCondition(_, body) => &body,
+                })
+                .map_or(false, |ok| ok == type_)
+            }) {
+                Err(ParseError::UnmatchedTypes)
+            } else {
+                Ok(type_)
+            }
+        }
+        ASTNode::InlineFunction(_, body) => get_type(body),
+        _ => Err(ParseError::CannotDenoteType),
+    }
+}
 fn parse_identifier(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
     let identifier = match cursor.peek().ok_or(ParseError::UnexpectedEOF)? {
         Token::Identifier(identifier) => String::from(identifier),
@@ -380,8 +432,8 @@ fn parse_identifier(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
             cursor.back();
             Ok(ASTNode::VariableDeclaration(
                 identifier,
-                Box::new(result),
-                None,
+                Box::new(result.clone()),
+                get_type(&result).ok(),
             ))
         }
 
@@ -401,7 +453,7 @@ fn parse_identifier(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
                         Some(type_),
                     ))
                 }
-                _ => return Err(ParseError::UnexpectedToken(Token::Assign)),
+                _ => Err(ParseError::UnexpectedToken(Token::Assign)),
             }
         }
 
@@ -460,11 +512,19 @@ fn parse_identifier(cursor: &mut Cursor) -> Result<ASTNode, ParseError> {
 }
 
 fn parse_tokens_skip_line(cursor: &mut Cursor) -> Option<Result<ASTNode, ParseError>> {
+    cursor.back();
     while cursor.next()? == &Token::Newline {}
-    parse_tokens(cursor)
+
+    cursor.back();
+    let result = parse_tokens(cursor);
+
+    while cursor.next()? == &Token::Newline {}
+    result
 }
+
 fn parse_tokens(cursor: &mut Cursor) -> Option<Result<ASTNode, ParseError>> {
     let next = cursor.next()?;
+
     Some(match next {
         Token::IntegerLiteral(_)
         | Token::FloatLiteral(_)

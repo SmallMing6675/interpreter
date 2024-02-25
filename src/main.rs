@@ -3,10 +3,10 @@ use compiler::eval::eval::Environment;
 use compiler::lex::lex::lex;
 use compiler::parse::parse::parse;
 use std::env;
-use std::fmt::write;
 use std::fs;
 use std::io;
 use std::io::Write;
+
 
 fn main() {
     let args: Vec<String> = env::args().collect();

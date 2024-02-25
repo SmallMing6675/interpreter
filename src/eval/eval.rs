@@ -2,7 +2,7 @@ use crate::eval::builtins::BUILTIN_FUNCTIONS;
 use crate::parse::ast::*;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Environment {
     store: HashMap<String, Value>,
     outer: Option<Box<Environment>>,
@@ -40,7 +40,7 @@ impl Environment {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Int(i64),
     Float(f64),
@@ -53,13 +53,15 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn cast(&self, type_: Type) -> Self {
+    pub fn cast(&self, type_: &Type) -> Result<Self, EvalError> {
         match (self, type_) {
-            (Value::Int(val), Type::Float) => Value::Float(*val as f64),
-            (Value::Float(val), Type::Int) => Value::Int(*val as i64),
-            (Value::Int(val), Type::Bool) => Value::Bool(*val != 0),
-            (Value::Float(val), Type::Bool) => Value::Bool(*val != 0.0),
-            _ => todo!(), // Handle other conversions or return an error
+            (Value::Int(val), Type::Float) => Ok(Value::Float(*val as f64)),
+            (Value::Float(val), Type::Int) => Ok(Value::Int(*val as i64)),
+            (Value::Int(val), Type::Bool) => Ok(Value::Bool(*val != 0)),
+            (Value::Float(val), Type::Bool) => Ok(Value::Bool(*val != 0.0)),
+            (Value::Bool(val), Type::Int) => Ok(Value::Int(*val as i64)),
+            (Value::Bool(val), Type::Float) => Ok(Value::Float(*val as i64 as f64)),
+            _ => Err(EvalError::CannotCast),
         }
     }
 
@@ -103,7 +105,7 @@ pub fn eval(node: &ASTNode, env: &mut Environment) -> Result<Value, EvalError> {
             let value = eval(value, env)?;
             let value = if let Some(type_) = type_ {
                 if value.get_type()? != *type_ {
-                    value.cast(type_.clone())
+                    value.cast(type_)?
                 } else {
                     value
                 }
@@ -299,4 +301,5 @@ pub enum EvalError {
     InvalidType,
     AlreadyDefined(String),
     DivisionByZero,
+    CannotCast,
 }

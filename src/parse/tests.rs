@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::lex::lex::lex;
+    use crate::parse::ast::*;
     use crate::parse::parse::parse;
-    use crate::parse::{self, ast::*};
 
     #[test]
     fn test_parse_arithmetic_expression() {
@@ -103,7 +103,7 @@ mod tests {
         let expected_ast = vec![ASTNode::VariableDeclaration(
             "x".to_string(),
             Box::new(ASTNode::Literal(Literal::Int(3))),
-            None,
+            Some(Type::Int),
         )];
         assert_eq!(parse(tokens).unwrap(), expected_ast);
     }
@@ -159,12 +159,6 @@ mod tests {
     }
 
     #[test]
-    fn test_function_call_with_multiple_arguments() {
-        let source_code = "add 2 3";
-        let tokens = lex(source_code).unwrap();
-    }
-
-    #[test]
     fn test_list_type_declaration() {
         let source_code = "x: [int] = [3]";
         let tokens = lex(source_code).unwrap();
@@ -177,5 +171,12 @@ mod tests {
         )];
         let ast = parse(tokens).unwrap();
         assert_eq!(ast, expected_ast);
+    }
+    #[test]
+    fn test_recursive_functions() {
+        let source_code = "fib = fn x -> fib(x-1) + fib(x-2)";
+        let tokens = lex(source_code).unwrap();
+        let ast = parse(tokens).unwrap();
+        panic!("{:#?}", ast);
     }
 }
